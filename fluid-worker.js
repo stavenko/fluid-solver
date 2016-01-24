@@ -136,7 +136,7 @@ function worker(){
     let ix_ = ix(p.x , p.y);
     UPrev[ix_] = v.x;
     VPrev[ix_] = v.y;
-    densityFieldPrev[ix_] = 0.0;
+    densityFieldPrev[ix_] = 0.1;
   };
   function densityConsumer(){
     densityFieldPrev[ix(50,50)] = -30;
@@ -170,6 +170,7 @@ function worker(){
       defineBoundaries(x, b);
     } else {
       var invC = 1 / c;
+      let to = x, from = x0;
       for (var k=0 ; k<iterations; k++) {
         for (var j=1 ; j<=height; j++) {
           var lastRow = (j - 1) * rowSize;
@@ -177,15 +178,19 @@ function worker(){
           var nextRow = (j + 1) * rowSize;
           var lastX = x[currentRow];
           ++currentRow;
-          for (var i=1; i<=width; i++)
-            lastX = x[currentRow] = (x0[currentRow] + a*(lastX+x[++currentRow]+x[++lastRow]+x[++nextRow])) * invC;
+          for (var i=1; i<=width; i++){
+            to[ix(i,j)] = (from[ix(i,j)] + a*(to[ix(i-1,j)]+to[ix(i+1,j)]+
+                                            to[ix(i,j-1)]+to[ix(i,j+1)]))/(1+4*a); 
+            // lastX = x[currentRow] = (x0[currentRow] + a*(lastX+x[++currentRow]+x[++lastRow]+x[++nextRow])) * invC;
+          }
         }
         defineBoundaries(x,b);
       }
     }
   }
   function diffuse_exp(to, from, condition, viscosity, dt){
-    let a = viscosity;
+    //let a = viscosity;
+    let a = dt*viscosity;// * simulationWidth * simulationHeight;
     lin_solve(condition, to, from, a, 1+ 4*a);
   }
 
