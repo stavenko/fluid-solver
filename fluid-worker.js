@@ -15,9 +15,11 @@ function worker(){
   let simulationHeight = 1;
   let isRunning = false;
   let currentJet = {x:{x:0,y:0}, v:{x:0, y:0}};
-  let Viscosity = 0.1;
+  let Viscosity = 1e-2;
   let oldSimulationTime = Date.now();
   let maxDensity = 0;
+  let minDensity = Infinity;
+  let defaultPressure = 100;
 
   const calculationFPS = 60,
         imageResultTicks = 1000/calculationFPS/2,
@@ -36,7 +38,7 @@ function worker(){
       isRunning = true;
       intervalId = setInterval(animate, 1000/calculationFPS);
       oldSimulationTime = Date.now();
-      densityFieldPrev[ix(50, 50)] = 1;
+      addPressure();
       return ;
     }
 
@@ -57,9 +59,9 @@ function worker(){
       V = new Float32Array(w* h);
       UPrev = new Float32Array(w* h);
       VPrev = new Float32Array(w* h);
-
       simulationWidth = width;
       simulationHeight = height;
+
       return ;
     }
 
@@ -70,6 +72,13 @@ function worker(){
 
   }
 
+  function addPressure(){
+   for(let i = 0; i <= simulationWidth; ++i){
+      for(let j =0; j <= simulationHeight; ++j){
+        densityField[ix(i,j)] = defaultPressure;
+      }
+    }
+  }
 
   let draws = 0;
   function animate(){
@@ -85,11 +94,12 @@ function worker(){
     let now = Date.now();
     let dt = (now - oldSimulationTime) / 1000;
     maxDensity = 0;
+    minDensity = Infinity;
     //randomDensity();
     clearFields();
     addJet();
-    velocityStep(U, V, UPrev, VPrev, Viscosity, dt);
-    densityStep(densityField, densityFieldPrev, U, V, Viscosity, dt);
+    velocityStep(U, V, UPrev, VPrev, Viscosity, 0.020);
+    densityStep(densityField, densityFieldPrev, U, V, Viscosity, 0.020);
     oldSimulationTime = now;
   }
 
@@ -105,24 +115,27 @@ function worker(){
   }
 
   function clearFields(){
-    for(let i =0; i< (simulationWidth+2 * simulationHeight+2); ++i){
-      densityField[i] =0;
-      U[i] = 0;
-      V[i] = 0;
+    for(let i =0; i< ((simulationWidth+2) * (simulationHeight+2)); ++i){
+      densityFieldPrev[i] =0;
+      UPrev[i] = 0;
+      VPrev[i] = 0;
     }
   }
 
   function prepareImage(){
     let image= new Uint8ClampedArray((simulationWidth)*(simulationHeight) * 4);
-    console.log("md =", maxDensity);
+    console.log("md =", maxDensity, minDensity);
     for(let i = 1; i < simulationWidth; ++i)
       for (let j =1; j< simulationHeight; ++j){
         let fix = ix(i,j);
-        let x = densityField[fix];
-
+        let x = densityField[fix] - minDensity;
+        let M = maxDensity - minDensity;
+       
         let IX = fix*4;
-        image[IX] = 0;// x*255*5; // red
-        image[IX+1] = x/maxDensity*255*10;
+        let g = x>0? x:0;
+        let r = x<0? -x:0;
+        image[IX] = r/maxDensity*255; // red
+        image[IX+1] = g/M*255;
         image[IX+2] = 0;
         image[IX+3] = 255;
       }
@@ -136,8 +149,9 @@ function worker(){
     let ix_ = ix(p.x , p.y);
     UPrev[ix_] = v.x;
     VPrev[ix_] = v.y;
-    densityFieldPrev[ix_] = 0.1;
+    densityFieldPrev[ix_] = Math.hypot(v.x, v.y);
   };
+
   function densityConsumer(){
     densityFieldPrev[ix(50,50)] = -30;
   }
@@ -160,42 +174,26 @@ function worker(){
     let height = simulationHeight;
     let width = simulationWidth;
     let rowSize = width;
-    if (a === 0 && c === 1) {
+    let invC = 1 / c;
+    let to = x, from = x0;
+    for (var k=0 ; k<iterations; k++) {
       for (var j=1 ; j<=height; j++) {
-        for (var i = 0; i < width; i++) {
-          let _ix = ix(i,j);
-          x[_ix] = x0[_ix];
+        for (var i=1; i<=width; i++){
+          to[ix(i,j)] = (from[ix(i,j)] + a*(to[ix(i-1,j)]+to[ix(i+1,j)]+
+                                          to[ix(i,j-1)]+to[ix(i,j+1)]))*invC; 
         }
       }
-      defineBoundaries(x, b);
-    } else {
-      var invC = 1 / c;
-      let to = x, from = x0;
-      for (var k=0 ; k<iterations; k++) {
-        for (var j=1 ; j<=height; j++) {
-          var lastRow = (j - 1) * rowSize;
-          var currentRow = j * rowSize;
-          var nextRow = (j + 1) * rowSize;
-          var lastX = x[currentRow];
-          ++currentRow;
-          for (var i=1; i<=width; i++){
-            to[ix(i,j)] = (from[ix(i,j)] + a*(to[ix(i-1,j)]+to[ix(i+1,j)]+
-                                            to[ix(i,j-1)]+to[ix(i,j+1)]))/(1+4*a); 
-            // lastX = x[currentRow] = (x0[currentRow] + a*(lastX+x[++currentRow]+x[++lastRow]+x[++nextRow])) * invC;
-          }
-        }
-        defineBoundaries(x,b);
-      }
+      defineBoundaries(x,b);
     }
   }
-  function diffuse_exp(to, from, condition, viscosity, dt){
+  function diffuse(to, from, condition, viscosity, dt){
     //let a = viscosity;
     let a = dt*viscosity;// * simulationWidth * simulationHeight;
     lin_solve(condition, to, from, a, 1+ 4*a);
   }
 
-  function diffuse(to, from, condition ,viscosity, dt){
-    let a = dt*viscosity * simulationWidth * simulationHeight;
+  function diffuse_old(to, from, condition ,viscosity, dt){
+    let a = dt*viscosity; //  * simulationWidth * simulationHeight;
     for(let k =0;k<20;++k){
       for(let i=1; i<=simulationWidth; ++i)
         for(let j=1; j <=simulationHeight; ++j)
@@ -219,9 +217,13 @@ function worker(){
         let i0 = Math.floor(x), i1 = i0+1;
         let j0 = Math.floor(y), j1 = j0+1;
         let s1 = x-i0, s0 = 1-s1, t1 = y-j0, t0 = 1-t1;
-        d[ix(i,j)] = s0*(t0*dprev[ix(i0,j0)]+t1*dprev[ix(i0,j1)])+
+        let newDensity = s0*(t0*dprev[ix(i0,j0)]+t1*dprev[ix(i0,j1)])+
                      s1*(t0*dprev[ix(i1,j0)]+t1*dprev[ix(i1,j1)]);
-        maxDensity = Math.max(maxDensity, d[ix(i,j)]);
+        d[ix(i,j)] = newDensity;
+        if(condition == 0){
+          maxDensity = Math.max(maxDensity, d[ix(i,j)]);
+          minDensity = Math.min(minDensity, d[ix(i,j)]);
+        }
       }
     }
     defineBoundaries(d, condition);
@@ -233,19 +235,15 @@ function worker(){
 
   function densityStep(d,dprev, u, v, viscosity, dt){
     addFields(d,dprev,dt);
-    diffuse_exp(dprev, d, 0, viscosity, dt);
+    diffuse(dprev, d, 0, viscosity, dt);
     advect(d, dprev, u, v, 0, dt);
   };
 
   function velocityStep(u, v, u0, v0, viscosity, dt){ 
     addFields(u, u0, dt); addFields(v, v0, dt);
-    var t = v; v =v0; v0=t ;
-    var t = u; u =u0; u0=t ;
-    diffuse_exp(u, u0, 1, viscosity, dt);
-    diffuse_exp(v, v0, 2, viscosity, dt);
-    project(u, v, u0, v0);
-    var t = v; v =v0; v0=t ;
-    var t = u; u =u0; u0=t ;
+    diffuse(u0, u, 1, viscosity, dt);
+    diffuse(v0, v, 2, viscosity, dt);
+    project(u0, v0, u, v);
     advect(u,u0,u0,v0, 1, dt);
     advect(v,v0,u0,v0, 2, dt);
     project(u, v, u0, v0);
