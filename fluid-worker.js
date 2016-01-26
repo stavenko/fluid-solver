@@ -15,7 +15,7 @@ function worker(){
   let simulationHeight = 1;
   let isRunning = false;
   let currentJet = {x:{x:0,y:0}, v:{x:0, y:0}};
-  let Viscosity = 1e-2;
+  let Viscosity = 1e-3;
   let oldSimulationTime = Date.now();
   let maxDensity = 0;
   let minDensity = Infinity;
@@ -79,6 +79,29 @@ function worker(){
       }
     }
   }
+  function pressureConsumer(){
+   //for(let i = 1; i <= simulationHeight; ++i)
+      //densityFieldPrev[ix(simulationWidth/2, simulationHeight/2)] = -10;
+      //densityFieldPrev[ix(simulationWidth/2+1, simulationHeight/2)] = -10;
+      //densityFieldPrev[ix(simulationWidth/2-1, simulationHeight/2)] = -10;
+      //densityFieldPrev[ix(simulationWidth/2, simulationHeight/2+1)] = -10;
+      //densityFieldPrev[ix(simulationWidth/2, simulationHeight/2-1)] = -10;
+      //UPrev[ix(simulationWidth/2, simulationHeight/2)] = 0;
+      //UPrev[ix(simulationWidth/2, simulationHeight/2)] = 0;
+
+
+      for(let i =1; i< 5; ++i){
+        for(let j=1; j <= simulationHeight; ++j){
+          densityField[ix(simulationWidth-i, j)] = 0;
+          densityFieldPrev[ix(simulationWidth-i, j)] = 0;
+          U[ix(simulationWidth-i, j)] = 100;
+          V[ix(simulationWidth-i, j)] = 0;
+          UPrev[ix(simulationWidth-i, j)] = 100;
+          VPrev[ix(simulationWidth-i, j)] = 0;
+        }
+      }
+      
+  }
 
   let draws = 0;
   function animate(){
@@ -97,6 +120,7 @@ function worker(){
     minDensity = Infinity;
     //randomDensity();
     clearFields();
+    pressureConsumer();
     addJet();
     velocityStep(U, V, UPrev, VPrev, Viscosity, 0.020);
     densityStep(densityField, densityFieldPrev, U, V, Viscosity, 0.020);
@@ -146,10 +170,16 @@ function worker(){
   function addJet(){
     let p = currentJet.x;
     let v = currentJet.v;
-    let ix_ = ix(p.x , p.y);
-    UPrev[ix_] = v.x;
-    VPrev[ix_] = v.y;
-    densityFieldPrev[ix_] = Math.hypot(v.x, v.y);
+    for(let i = 0; i<= simulationHeight; i+=8){
+      let ix_ = ix(simulationWidth/4*1 , i);
+      UPrev[ix_] = 10000 *  Viscosity;
+      VPrev[ix_] = 0;
+      densityFieldPrev[ix_] = 10000*Viscosity;
+
+    }
+    //UPrev[ix_] = v.x;
+    //VPrev[ix_] = v.y;
+    //densityFieldPrev[ix_] = Math.hypot(v.x, v.y);
   };
 
   function densityConsumer(){
@@ -172,7 +202,7 @@ function worker(){
   function lin_solve(b, x, x0, a, c, iterations) {
     if(!iterations) iterations = 20;
     let height = simulationHeight;
-    let width = simulationWidth;
+    let width = simulationWidth-5;
     let rowSize = width;
     let invC = 1 / c;
     let to = x, from = x0;
@@ -210,7 +240,7 @@ function worker(){
   function advect(d, dprev, u,v, condition, dt){
     let dtw = dt * simulationWidth;
     let dth = dt * simulationHeight;
-    for(let i=1; i<=simulationWidth; ++i){
+    for(let i=1; i<=simulationWidth-6; ++i){
       for(let j=1; j <=simulationHeight; ++j){
         let x = clamp(i - dtw * u[ix(i,j)], 0.5, simulationWidth+0.5);
         let y = clamp(j - dth * v[ix(i,j)], 0.5, simulationHeight+0.5);
@@ -304,7 +334,7 @@ function worker(){
     let H = simulationHeight
       for ( let i=1 ; i<= H; ++i ) {
         x[ix(0,i)]   = b === 1 ? -x[ix(1, i)] : x[ix(1,i)];
-        x[ix(W+1,i)] = b === 1 ? -x[ix(W, i)] : x[ix(W, i)];
+        //x[ix(W+1,i)] = b === 1 ? -x[ix(W, i)] : x[ix(W, i)];
       }
       for(let i=0; i<=W; ++i){
         x[ix(i,0)]   = b===2 ? -x[ix(i,1)] : x[ix(i,1)];
@@ -312,8 +342,8 @@ function worker(){
       }
       x[ix(0,0)]     = 0.5*(x[ix(1, 0)]   +x[ix(0, 1)]);
       x[ix(0, H+1)]  = 0.5*(x[ix(1, H+1)] +x[ix(0, H)]);
-      x[ix(W+1,0 )]  = 0.5*(x[ix(W, 0)]   +x[ix(W+1, 1)]);
-      x[ix(W+1,H+1)] = 0.5*(x[ix(W, H+1)] +x[ix(W+1, H)]);
+      //x[ix(W+1,0 )]  = 0.5*(x[ix(W, 0)]   +x[ix(W+1, 1)]);
+      //x[ix(W+1,H+1)] = 0.5*(x[ix(W, H+1)] +x[ix(W+1, H)]);
     }
 
 }
