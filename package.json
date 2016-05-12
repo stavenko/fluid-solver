@@ -9,6 +9,7 @@
   "author": "Vasiliy G. Stavenko",
   "license": "ISC",
   "dependencies": {
+    "bezier-js": "^1.3.2",
     "bootstrap": "^3.3.6",
     "bootstrap-webpack": "0.0.5",
     "jquery": "^2.2.0",
